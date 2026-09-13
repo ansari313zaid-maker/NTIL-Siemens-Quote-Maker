@@ -1,4 +1,4 @@
-name: Build NTIL Quotation Maker APK
+ name: Build NTIL Quotation Maker APK
 
 on:
   workflow_dispatch:
