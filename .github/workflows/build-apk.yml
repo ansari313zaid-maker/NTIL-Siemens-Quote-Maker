@@ -1,4 +1,4 @@
- name: Build NTIL Quotation Maker APK
+name: Build NTIL Quotation Maker APK
 
 on:
   workflow_dispatch:
@@ -41,7 +41,6 @@ jobs:
 
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "Android project found at: $PROJECT_DIR"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Check Android project
@@ -50,6 +49,53 @@ jobs:
           test -f "$PROJECT_DIR/settings.gradle.kts"
           test -d "$PROJECT_DIR/app"
           echo "Android project OK"
+
+      - name: Fix Compose plugin
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["PROJECT_DIR"])
+
+          root_file = root / "build.gradle.kts"
+          app_file = root / "app" / "build.gradle.kts"
+
+          root_text = root_file.read_text()
+
+          if "org.jetbrains.kotlin.plugin.compose" not in root_text:
+              marker = 'id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false'
+              replacement = marker + '\n    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false'
+              if marker in root_text:
+                  root_text = root_text.replace(marker, replacement)
+              else:
+                  root_text = root_text.replace(
+                      'plugins {',
+                      'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false',
+                      1
+                  )
+              root_file.write_text(root_text)
+
+          app_text = app_file.read_text()
+
+          if 'id("org.jetbrains.kotlin.plugin.compose")' not in app_text:
+              marker = 'id("org.jetbrains.kotlin.plugin.serialization")'
+              if marker in app_text:
+                  app_text = app_text.replace(
+                      marker,
+                      'id("org.jetbrains.kotlin.plugin.compose")\n    ' + marker,
+                      1
+                  )
+              else:
+                  app_text = app_text.replace(
+                      'plugins {',
+                      'plugins {\n    id("org.jetbrains.kotlin.plugin.compose")',
+                      1
+                  )
+              app_file.write_text(app_text)
+
+          print("Compose plugin check/fix completed.")
+          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
