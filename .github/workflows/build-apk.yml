@@ -22,6 +22,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Extract Android Project
         run: |
@@ -31,38 +33,22 @@ jobs:
           echo "Extracting Android project..."
           unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
 
-          echo "Extracted structure:"
-          find project -maxdepth 4 -type f | head -150
+          echo "Project files:"
+          find project -maxdepth 5 -type f | sort
 
       - name: Find Android Project
         run: |
-          echo "Searching for settings.gradle.kts..."
-
           PROJECT_DIR=$(find project -name settings.gradle.kts -printf '%h\n' | head -1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle.kts not found"
+            echo "ERROR: Android project not found"
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR"
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Find Gradle Wrapper
-        run: |
-          echo "Searching for gradlew..."
-
-          GRADLEW=$(find project -name gradlew -type f -print | head -1)
-
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found inside ZIP"
-            echo "All files:"
-            find project -maxdepth 5 -type f | sort
-            exit 1
-          fi
-
-          echo "GRADLEW=$GRADLEW"
-          echo "GRADLEW=$GRADLEW" >> "$GITHUB_ENV"
 
       - name: Check Android Project
         run: |
@@ -79,21 +65,21 @@ jobs:
           echo "Checking app/build.gradle.kts..."
           test -f "$PROJECT_DIR/app/build.gradle.kts"
 
-          echo "Android project looks OK."
+          echo "Android project is ready."
 
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          chmod +x "$GRADLEW"
+          echo "Gradle version:"
+          gradle --version
 
-          echo "Starting Gradle build..."
-          "$GRADLEW" \
-            --no-daemon \
-            --stacktrace \
-            clean assembleDebug
+          echo "Starting APK build..."
+
+          gradle --no-daemon --stacktrace clean assembleDebug
 
       - name: Check APK
         run: |
-          echo "Searching for generated APK..."
+          echo "Checking generated APK..."
 
           find "$PROJECT_DIR/app/build/outputs" \
             -type f \
