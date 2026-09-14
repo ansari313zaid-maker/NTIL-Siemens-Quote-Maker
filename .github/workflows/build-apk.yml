@@ -29,7 +29,7 @@ jobs:
 
           unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
 
-          echo "Extracted files:"
+          echo "Extracted project:"
           find project -maxdepth 5 -type f | head -200
 
       - name: Locate Android project
@@ -43,14 +43,14 @@ jobs:
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Android project:"
+          echo "Android project found at:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Verify Android project
         run: |
-          echo "Checking project..."
+          echo "Checking Android project..."
 
           test -f "$PROJECT_DIR/settings.gradle.kts"
           test -d "$PROJECT_DIR/app"
@@ -70,65 +70,10 @@ jobs:
             sed -i '1i@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)' "$FILE"
           fi
 
-          echo "Material3 opt-in added/verified."
+          echo "Material3 opt-in verified."
 
-          echo "First lines of MainActivity.kt:"
+          echo "MainActivity.kt first lines:"
           head -10 "$FILE"
-
-      - name: Fix Compose plugin
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          root = Path(os.environ["PROJECT_DIR"])
-
-          root_file = root / "build.gradle.kts"
-          app_file = root / "app" / "build.gradle.kts"
-
-          root_text = root_file.read_text()
-
-          if "org.jetbrains.kotlin.plugin.compose" not in root_text:
-
-              marker = 'id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false'
-
-              if marker in root_text:
-                  root_text = root_text.replace(
-                      marker,
-                      marker + '\n    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false"
-                  )
-              else:
-                  root_text = root_text.replace(
-                      "plugins {",
-                      'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false',
-                      1
-                  )
-
-              root_file.write_text(root_text)
-
-          app_text = app_file.read_text()
-
-          if 'id("org.jetbrains.kotlin.plugin.compose")' not in app_text:
-
-              marker = 'id("org.jetbrains.kotlin.plugin.serialization")'
-
-              if marker in app_text:
-                  app_text = app_text.replace(
-                      marker,
-                      'id("org.jetbrains.kotlin.plugin.compose")\n    ' + marker,
-                      1
-                  )
-              else:
-                  app_text = app_text.replace(
-                      "plugins {",
-                      'plugins {\n    id("org.jetbrains.kotlin.plugin.compose")',
-                      1
-                  )
-
-              app_file.write_text(app_text)
-
-          print("Compose plugin check completed.")
-          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
