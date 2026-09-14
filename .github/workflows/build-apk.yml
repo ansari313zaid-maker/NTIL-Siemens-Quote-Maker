@@ -26,7 +26,6 @@ jobs:
         run: |
           rm -rf project
           mkdir project
-
           unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
 
           echo "Extracted project:"
@@ -50,10 +49,9 @@ jobs:
 
       - name: Verify Android project
         run: |
-          echo "Checking Android project..."
-
           test -f "$PROJECT_DIR/settings.gradle.kts"
-          test -d "$PROJECT_DIR/app"
+          test -f "$PROJECT_DIR/build.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
 
           echo "Android project OK"
 
@@ -71,9 +69,28 @@ jobs:
           fi
 
           echo "Material3 opt-in verified."
-
-          echo "MainActivity.kt first lines:"
           head -10 "$FILE"
+
+      - name: Enable Compose Compiler Plugin
+        run: |
+          ROOT="$PROJECT_DIR/build.gradle.kts"
+          APP="$PROJECT_DIR/app/build.gradle.kts"
+
+          echo "Checking Compose Compiler plugin..."
+
+          if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "$ROOT"; then
+            sed -i '/^plugins {/a\    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false' "$ROOT"
+          fi
+
+          if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "$APP"; then
+            sed -i '/^plugins {/a\    id("org.jetbrains.kotlin.plugin.compose")' "$APP"
+          fi
+
+          echo "Root build.gradle.kts plugins:"
+          sed -n '1,30p' "$ROOT"
+
+          echo "App build.gradle.kts plugins:"
+          sed -n '1,30p' "$APP"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
