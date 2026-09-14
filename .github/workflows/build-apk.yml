@@ -1,152 +1,130 @@
-name: Build NTIL Quotation Maker APK
+name: Build APK
 
-"on":
-workflow_dispatch:
-push:
-branches:
-- main
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-  - name: Setup Java
-    uses: actions/setup-java@v4
-    with:
-      distribution: temurin
-      java-version: "17"
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
-  - name: Setup Gradle
-    uses: gradle/actions/setup-gradle@v4
-    with:
-      gradle-version: "8.9"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-  - name: Extract Android Project
-    run: |
-      rm -rf project
-      mkdir -p project
+      - name: Extract Android Project
+        run: |
+          rm -rf project
+          mkdir -p project
 
-      echo "Extracting Android project..."
-      unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
+          echo "Extracting Android project..."
+          unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
 
-      echo "Searching for Android project..."
-      find project -maxdepth 6 -type f | sort
+          echo "Project files:"
+          find project -maxdepth 6 -type f | sort
 
-  - name: Find Android Project
-    run: |
-      PROJECT_DIR=$(find project -name settings.gradle.kts -printf '%h\n' | head -1)
+      - name: Find Android Project
+        run: |
+          PROJECT_DIR=$(find project -name settings.gradle.kts -printf '%h\n' | head -1)
 
-      if [ -z "$PROJECT_DIR" ]; then
-        echo "ERROR: Android project not found"
-        exit 1
-      fi
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android project not found"
+            exit 1
+          fi
 
-      echo "Android project found at:"
-      echo "$PROJECT_DIR"
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
 
-      echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-  - name: Check Android Project
-    run: |
-      echo "Project directory: $PROJECT_DIR"
+      - name: Fix Kotlin Compose Compiler
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
 
-      test -d "$PROJECT_DIR/app"
-      test -f "$PROJECT_DIR/settings.gradle.kts"
-      test -f "$PROJECT_DIR/app/build.gradle.kts"
+          echo "Checking Android project..."
 
-      echo "Android project is ready."
+          test -f "app/build.gradle.kts"
 
-  - name: Fix Kotlin Compose Compiler
-    working-directory: ${{ env.PROJECT_DIR }}
-    run: |
-      APP_GRADLE="app/build.gradle.kts"
+          echo "Checking root build.gradle.kts..."
 
-      echo "Checking Compose Compiler plugin..."
+          if [ -f "build.gradle.kts" ]; then
+            if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "build.gradle.kts"; then
+              sed -i '/^plugins {/a\    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false' build.gradle.kts
+              echo "Added Compose plugin to root build.gradle.kts"
+            else
+              echo "Compose plugin already exists in root build.gradle.kts"
+            fi
+          fi
 
-      if grep -q 'org.jetbrains.kotlin.plugin.compose' "$APP_GRADLE"; then
-        echo "Compose Compiler plugin already exists."
-      else
-        echo "Adding Compose Compiler plugin..."
+          echo "Checking app/build.gradle.kts..."
 
-        python3 - "$APP_GRADLE" <<'PY'
-      import sys
+          if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "app/build.gradle.kts"; then
+            sed -i '/id("org.jetbrains.kotlin.android")/a\    id("org.jetbrains.kotlin.plugin.compose")' app/build.gradle.kts
+            echo "Added Compose plugin to app/build.gradle.kts"
+          else
+            echo "Compose plugin already exists in app/build.gradle.kts"
+          fi
 
-      path = sys.argv[1]
+          echo "Final plugins section:"
+          sed -n '1,40p' app/build.gradle.kts
 
-      with open(path, "r", encoding="utf-8") as f:
-          text = f.read()
+      - name: Check Android Project
+        run: |
+          echo "Checking Android project..."
 
-      marker = 'id("org.jetbrains.kotlin.android")'
-      plugin = '    id("org.jetbrains.kotlin.plugin.compose")'
+          ls -la "$PROJECT_DIR"
 
-      if "plugins {" not in text:
-          raise SystemExit("ERROR: plugins block not found")
+          echo "Checking app folder..."
+          test -d "$PROJECT_DIR/app"
 
-      if marker not in text:
-          raise SystemExit("ERROR: org.jetbrains.kotlin.android plugin not found")
+          echo "Checking settings.gradle.kts..."
+          test -f "$PROJECT_DIR/settings.gradle.kts"
 
-      lines = text.splitlines()
-      output = []
-      inserted = False
+          echo "Checking app/build.gradle.kts..."
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
 
-      for line in lines:
-          output.append(line)
+          echo "Android project is ready."
 
-          if marker in line and not inserted:
-              indent = line[:len(line) - len(line.lstrip())]
-              output.append(indent + 'id("org.jetbrains.kotlin.plugin.compose")')
-              inserted = True
+      - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "Gradle version:"
+          gradle --version
 
-      with open(path, "w", encoding="utf-8") as f:
-          f.write("\n".join(output) + "\n")
+          echo "Starting APK build..."
 
-      print("Compose Compiler plugin added successfully.")
-      PY
-      fi
+          gradle --no-daemon --stacktrace clean assembleDebug
 
-      echo "Final app/build.gradle.kts plugins:"
-      sed -n '1,35p' "$APP_GRADLE"
+      - name: Check APK
+        run: |
+          echo "Checking generated APK..."
 
-  - name: Verify Compose Compiler
-    working-directory: ${{ env.PROJECT_DIR }}
-    run: |
-      if ! grep -q 'org.jetbrains.kotlin.plugin.compose' app/build.gradle.kts; then
-        echo "ERROR: Compose Compiler plugin is missing."
-        exit 1
-      fi
+          find "$PROJECT_DIR/app/build/outputs" \
+            -type f \
+            -name "*.apk" \
+            -print
 
-      echo "Compose Compiler plugin verified successfully."
+          test -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-  - name: Build Debug APK
-    working-directory: ${{ env.PROJECT_DIR }}
-    run: |
-      echo "Gradle version:"
-      gradle --version
+          echo "APK generated successfully!"
 
-      echo "Starting APK build..."
-
-      gradle --no-daemon --stacktrace clean assembleDebug
-
-  - name: Check APK
-    run: |
-      echo "Checking generated APK..."
-
-      find "$PROJECT_DIR/app/build/outputs" \
-        -type f \
-        -name "*.apk" \
-        -print
-
-      test -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-
-      echo "APK generated successfully!"
-
-  - name: Upload APK
-    uses: actions/upload-artifact@v4
-    with:
-      name: NTIL-Siemens-Quote-Maker-${{ github.run_id }}
-      path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
-      if-no-files-found: error
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NTIL-Siemens-Quote-Maker-${{ github.run_id }}
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
