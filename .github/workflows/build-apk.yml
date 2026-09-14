@@ -1,135 +1,47 @@
-name: Build NTIL Quotation Maker APK
+name: Build APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify ZIP
-        run: |
-          echo "Repository files:"
-          ls -lah
-          test -f NTIL_Siemens_GitHub_Upload.zip
-
-      - name: Extract Android project
-        run: |
-          rm -rf project
-          mkdir project
-          unzip -q NTIL_Siemens_GitHub_Upload.zip -d project
-
-          echo "Extracted project:"
-          find project -maxdepth 5 -type f | head -200
-
-      - name: Locate Android project
-        run: |
-          SETTINGS=$(find project -name settings.gradle.kts -type f | head -1)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle.kts not found"
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "Android project found at:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Verify Android project
-        run: |
-          test -f "$PROJECT_DIR/settings.gradle.kts"
-          test -f "$PROJECT_DIR/build.gradle.kts"
-          test -f "$PROJECT_DIR/app/build.gradle.kts"
-
-          echo "Android project OK"
-
-      - name: Fix Material3 opt-in
-        run: |
-          FILE="$PROJECT_DIR/app/src/main/java/com/ntil/quotationmaker/MainActivity.kt"
-
-          if [ ! -f "$FILE" ]; then
-            echo "ERROR: MainActivity.kt not found"
-            exit 1
-          fi
-
-          if ! grep -q "@file:OptIn" "$FILE"; then
-            sed -i '1i@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)' "$FILE"
-          fi
-
-          echo "Material3 opt-in verified."
-          head -10 "$FILE"
-
-      - name: Enable Compose Compiler Plugin
-        run: |
-          ROOT="$PROJECT_DIR/build.gradle.kts"
-          APP="$PROJECT_DIR/app/build.gradle.kts"
-
-          echo "Checking Compose Compiler plugin..."
-
-          if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "$ROOT"; then
-            sed -i '/^plugins {/a\    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false' "$ROOT"
-          fi
-
-          if ! grep -q 'org.jetbrains.kotlin.plugin.compose' "$APP"; then
-            sed -i '/^plugins {/a\    id("org.jetbrains.kotlin.plugin.compose")' "$APP"
-          fi
-
-          echo "Root build.gradle.kts plugins:"
-          sed -n '1,30p' "$ROOT"
-
-          echo "App build.gradle.kts plugins:"
-          sed -n '1,30p' "$APP"
-
-      - name: Set up JDK 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+
+      - name: Check project
+        run: |
+          echo "Checking Android project..."
+          ls -la
+          echo "App folder:"
+          ls -la app
+          echo "Gradle files:"
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
 
       - name: Build Debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          gradle --no-daemon clean assembleDebug
-
-      - name: Verify APK
-        run: |
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: APK not found"
-            exit 1
-          fi
-
-          echo "APK successfully created:"
-          ls -lh "$APK"
+          chmod +x gradlew
+          ./gradlew --no-daemon clean assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NTIL-Quotation-Maker-debug-apk-${{ github.run_id }}
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          name: NTIL-Siemens-Quote-Maker-${{ github.run_id }}
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
